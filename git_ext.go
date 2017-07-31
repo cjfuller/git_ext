@@ -10,8 +10,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	docopt "github.com/docopt/docopt-go"
 	"github.com/mgutz/ansi"
-	cli "gopkg.in/urfave/cli.v1"
 )
 
 func rungit(cmdargs []string, verbose bool) string {
@@ -197,90 +197,70 @@ func drawBranchTree() {
 }
 
 func main() {
-	var verbose = false
-	cli.VersionFlag = cli.BoolFlag{
-		Name:  "print-version, V",
-		Usage: "print only the version",
-	}
-	app := cli.NewApp()
+	usage := `git_ext - a grab bag of git shortcuts
 
-	app.Name = "git_ext"
-	app.Usage = "a grab bag of git shortcuts"
+Usage:
+	git_ext [--verbose] (lh | lasthash)
+	git_ext [--verbose] shup | show_up
+	git_ext [--verbose] fu | fix_up | fix_upstream
+	git_ext [--verbose] up <branch>
+	git_ext [--verbose] (rup | rec_fix_up) <terminal_branch>
+	git_ext [--verbose] tree | show_tree
 
-	app.Flags = []cli.Flag{
-		cli.BoolFlag{
-			Name:        "verbose, v",
-			Usage:       "Show extra output?",
-			Destination: &verbose,
-		},
-	}
+Options:
+	--verbose  		Show extra output?
 
-	app.Commands = []cli.Command{
-		{
-			Name:    "lasthash",
-			Aliases: []string{"lh"},
-			Usage:   "print the most recent commit's hash",
-			Action: func(_ *cli.Context) error {
-				fmt.Println(lasthash(verbose))
-				return nil
-			},
-		},
-		{
-			Name:    "show_up",
-			Aliases: []string{"shup"},
-			Usage:   "print the upstream branch",
-			Action: func(_ *cli.Context) error {
-				fmt.Println(getUpstream(verbose))
-				return nil
-			},
-		},
-		{
-			Name:    "fix_upstream",
-			Aliases: []string{"fix_up", "fu"},
-			Usage:   "reset to just latest commit on top of the current branch",
-			Action: func(c *cli.Context) error {
-				upstream := getUpstream(verbose)
-				fixUpstream(upstream, verbose)
-				return nil
-			},
-		},
-		{
-			Name:      "up",
-			Usage:     "set the upstream to the specified branch, reset to latest commit on top of that upstream",
-			ArgsUsage: "[branch]",
-			Action: func(c *cli.Context) error {
-				upstream := c.Args().Get(0)
-				if upstream == "" {
-					return cli.NewExitError("upstream must be specified", 1)
-				}
-				fixUpstream(upstream, verbose)
-				return nil
-			},
-		},
-		{
-			Name:      "rec_fix_up",
-			Aliases:   []string{"rup"},
-			Usage:     "recursively apply fix_upstream until we're on this branch",
-			ArgsUsage: "[terminal_branch]",
-			Action: func(c *cli.Context) error {
-				terminal := c.Args().Get(0)
-				if terminal == "" {
-					return cli.NewExitError("terminal branch must be specified", 1)
-				}
-				recFixUp(terminal, verbose, []string{})
-				return nil
-			},
-		},
-		{
-			Name:    "show_tree",
-			Aliases: []string{"tree"},
-			Usage:   "draw the current tree of branches",
-			Action: func(c *cli.Context) error {
-				drawBranchTree()
-				return nil
-			},
-		},
+Commands:
+	lh, lasthash                Print the most recent commit's hash
+	shup, show_up               Print the upstream branch
+	fu, fix_up, fix_upstream    reset to just the lastest commit on top of the upstream branch
+	up                          set upstream, then run fix_up
+	rup, rec_fix_up             recursively apply fix_upstream from terminal_branch to this one
+	tree, show_tree             draw the current tree of branches
+	`
+
+	args, err := docopt.Parse(usage, nil, true, "0.0.1", true)
+	if err != nil {
+		panic(err)
 	}
 
-	app.Run(os.Args)
+	flag := func(names ...string) bool {
+		for _, name := range names {
+			if args[name] == true {
+				return true
+			}
+		}
+		return false
+	}
+
+	verbose := flag("verbose")
+
+	if flag("lh", "lasthash") {
+		fmt.Println(lasthash(verbose))
+		return
+	}
+
+	if flag("shup", "show_upstream") {
+		return
+	}
+
+	if flag("fu", "fix_up", "fix_upstream") {
+		fixUpstream(getUpstream(verbose), verbose)
+		return
+	}
+
+	if flag("up") {
+		fixUpstream(args["<branch>"].(string), verbose)
+		return
+	}
+
+	if flag("rup", "rec_fix_up") {
+		recFixUp(args["<terminal_branch>"].(string), verbose, []string{})
+		return
+	}
+
+	if flag("tree", "show_tree") {
+		drawBranchTree()
+		return
+	}
 }

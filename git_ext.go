@@ -90,6 +90,14 @@ func recFixUp(terminal string, verbose bool, branchCache []string) {
 	recFixUp(terminal, verbose, append([]string{currBranch}, branchCache...))
 }
 
+func commitBranch(branchName string, verbose bool) {
+	rungit([]string{"branch", branchName}, true)
+	ensureClean()
+	rungit([]string{"reset", "--hard", "HEAD~1"}, true)
+	rungit([]string{"checkout", branchName}, true)
+	handleSubmodules(true)
+}
+
 type branchT struct {
 	Desc        branchDescriptor
 	Downstream  []*branchT
@@ -205,6 +213,7 @@ Usage:
 	git_ext [--verbose] fu | fix_up | fix_upstream
 	git_ext [--verbose] up <branch>
 	git_ext [--verbose] (rup | rec_fix_up) <terminal_branch>
+	git_ext [--verbose] (cbr | commit_br) <branch>
 	git_ext [--verbose] tree | show_tree
 
 Options:
@@ -216,6 +225,7 @@ Commands:
 	fu, fix_up, fix_upstream    reset to just the lastest commit on top of the upstream branch
 	up                          set upstream, then run fix_up
 	rup, rec_fix_up             recursively apply fix_upstream from terminal_branch to this one
+	cbr, commit_br              create a new branch at the current commit, reset to HEAD~1, check out the new branch
 	tree, show_tree             draw the current tree of branches
 	`
 
@@ -257,6 +267,10 @@ Commands:
 	if flag("rup", "rec_fix_up") {
 		recFixUp(args["<terminal_branch>"].(string), verbose, []string{})
 		return
+	}
+
+	if flag("cbr", "commit_br") {
+		commitBranch(args["<branch>"].(string), verbose)
 	}
 
 	if flag("tree", "show_tree") {

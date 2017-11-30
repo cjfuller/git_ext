@@ -137,7 +137,7 @@ func parseBranchEntry(branchEntry string) branchDescriptor {
 	return descriptor
 }
 
-var indentAmount = 4
+var indentAmount = 2
 
 func prefixForDepth(depth int) string {
 	return strings.Repeat(" ", indentAmount*depth) + "+-- "
@@ -243,7 +243,7 @@ Commands:
 		return false
 	}
 
-	verbose := flag("verbose")
+	verbose := flag("--verbose")
 
 	if flag("lh", "lasthash") {
 		fmt.Println(lasthash(verbose))

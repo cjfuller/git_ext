@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -179,11 +180,21 @@ func drawBranchTree() {
 	w := new(tabwriter.Writer)
 	outputBuffer := bytes.Buffer{}
 	w.Init(&outputBuffer, 5, 0, 1, ' ', 0)
+	rootBranches := []*branchT{}
 	for _, br := range branchMap {
 		if !br.HasUpstream {
-			printTreeRootedAt(w, br, 0)
+			rootBranches = append(rootBranches, br)
 		}
 	}
+
+	sort.Slice(rootBranches, func(i, j int) bool {
+		return rootBranches[i].Desc.Name < rootBranches[j].Desc.Name
+	})
+
+	for _, br := range rootBranches {
+		printTreeRootedAt(w, br, 0)
+	}
+
 	w.Flush()
 	output := outputBuffer.String()
 	// Finally, we need to highlight the current branch in green.

@@ -262,6 +262,7 @@ Commands:
 	}
 
 	if flag("shup", "show_upstream") {
+		fmt.Println(getUpstream(verbose))
 		return
 	}
 

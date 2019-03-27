@@ -123,7 +123,7 @@ func parseBranchEntry(branchEntry string) branchDescriptor {
 	descriptor.Sha = parts[1]
 	rest := parts[2]
 
-	restExpr := regexp.MustCompile("\\[([^\\]]*)\\] (.*)")
+	restExpr := regexp.MustCompile(`(?:\[([^\]]*)\] )?(.*)`)
 	m := restExpr.FindStringSubmatch(rest)
 	if m == nil {
 		panic(fmt.Sprintf("Unexpectedly unable to parse branch line %s\n", branchEntry))

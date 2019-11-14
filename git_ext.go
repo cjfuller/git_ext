@@ -99,6 +99,11 @@ func commitBranch(branchName string, verbose bool) {
 	handleSubmodules(true)
 }
 
+func pushOrigin(verbose bool) {
+	branch := getCurrBranch(verbose)
+	rungit([]string{"push", "-f", "origin", branch}, true)
+}
+
 type branchT struct {
 	Desc        branchDescriptor
 	Downstream  []*branchT
@@ -226,6 +231,7 @@ Usage:
 	git_ext [--verbose] (rup | rec_fix_up) <terminal_branch>
 	git_ext [--verbose] (cbr | commit_br) <branch>
 	git_ext [--verbose] tree | show_tree
+	git_ext [--verbose] po | push_origin
 
 Options:
 	--verbose  		Show extra output?
@@ -238,6 +244,7 @@ Commands:
 	rup, rec_fix_up             recursively apply fix_upstream from terminal_branch to this one
 	cbr, commit_br              create a new branch at the current commit, reset to HEAD~1, check out the new branch
 	tree, show_tree             draw the current tree of branches
+	po, push_origin             force push to the branch of the same name on the origin
 	`
 
 	args, err := docopt.Parse(usage, nil, true, "0.0.1", true)
@@ -283,6 +290,12 @@ Commands:
 
 	if flag("cbr", "commit_br") {
 		commitBranch(args["<branch>"].(string), verbose)
+		return
+	}
+
+	if flag("po", "push_origin") {
+		pushOrigin(verbose)
+		return
 	}
 
 	if flag("tree", "show_tree") {

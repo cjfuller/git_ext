@@ -4,6 +4,7 @@ use std::process::Command;
 
 use anyhow::Error;
 use colored::*;
+use dialoguer::Confirm;
 use regex::Regex;
 use structopt::StructOpt;
 use tabular::{Row, Table};
@@ -214,7 +215,10 @@ fn format_tree_rooted_at(
                 .with_cell("")
                 .with_cell("")]
         } else if !branches_by_name.contains_key(up) {
-            vec![Row::new().with_cell((upstream_prefix + up + " [missing]").red())]
+            vec![Row::new()
+                .with_cell((upstream_prefix + up + " [missing]").red())
+                .with_cell("")
+                .with_cell("")]
         } else {
             vec![]
         }
@@ -301,6 +305,54 @@ fn print_branch_tree() -> GEResult<()> {
     Ok(())
 }
 
+fn delete_branch(branch: &str, verbose: bool) -> GEResult<()> {
+    run_git(vec!["branch", "-D", branch], verbose)?;
+    Ok(())
+}
+
+fn purge(prefix: &str, no_confirm: bool, verbose: bool) -> GEResult<()> {
+    let re = Regex::new(&format!(r"origin/{}/(\w+)", prefix))?;
+    let branches: std::vec::Vec<String> =
+        run_git(vec!["remote", "prune", "origin", "-n"], verbose)?
+            .lines()
+            .map(|s| s.trim())
+            .map(|s| re.captures(s))
+            .flatten()
+            .map(|cap| cap.get(1))
+            .flatten()
+            .map(|m| format!("{}/{}", prefix, m.as_str()))
+            .collect();
+    if branches.is_empty() {
+        println!("No branches to purge.");
+        return Ok(());
+    }
+    println!("I'm going to purge the following branches:");
+    for branch in &branches {
+        println!("{}", branch);
+    }
+    if no_confirm {
+        for branch in &branches {
+            let result = delete_branch(&branch, true);
+            if let Err(e) = result {
+                println!("Warning: ignoring error deleting branch {}: {}", branch, e)
+            }
+        }
+        run_git(vec!["remote", "prune", "origin"], verbose)?;
+    } else if Confirm::new().with_prompt("Ok?").interact()? {
+        for branch in branches {
+            let result = delete_branch(&branch, true);
+            if let Err(e) = result {
+                println!("Warning: ignoring error deleting branch {}: {}", branch, e)
+            }
+        }
+        run_git(vec!["remote", "prune", "origin"], verbose)?;
+    } else {
+        println!("Cancelling.")
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, StructOpt)]
 pub enum SubCommand {
     #[structopt(alias = "lh")]
@@ -331,6 +383,12 @@ pub enum SubCommand {
 
     #[structopt(alias = "po")]
     PushOrigin {},
+
+    Purge {
+        prefix: String,
+        #[structopt(short = "y")]
+        no_confirm: bool,
+    },
 }
 
 #[derive(Debug, StructOpt)]
@@ -358,6 +416,7 @@ fn main() {
         CommitBr { name } => commit_branch(&name, verbose),
         PushOrigin {} => push_origin(verbose),
         ShowTree {} => print_branch_tree(),
+        Purge { prefix, no_confirm } => purge(&prefix, no_confirm, verbose),
     };
     if result.is_err() {
         eprintln!("{}", result.unwrap_err());

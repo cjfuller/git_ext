@@ -311,7 +311,7 @@ fn delete_branch(branch: &str, verbose: bool) -> GEResult<()> {
 }
 
 fn purge(prefix: &str, no_confirm: bool, verbose: bool) -> GEResult<()> {
-    let re = Regex::new(&format!(r"origin/{}/(\w+)", prefix))?;
+    let re = Regex::new(&format!(r"origin/{}/([\w-]+)", prefix))?;
     let branches: std::vec::Vec<String> =
         run_git(vec!["remote", "prune", "origin", "-n"], verbose)?
             .lines()

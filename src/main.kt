@@ -107,7 +107,7 @@ fun getCurrBranch(@Suppress("UNUSED_PARAMETER") verbose: Boolean): Result<String
 
 fun fixUpstream(upstream: String, verbose: Boolean): Result<Unit> = Result.of {
     val commit = !lasthash(verbose)
-    !runGit(listOf("branch", "--set-usptream-to", upstream), true)
+    !runGit(listOf("branch", "--set-upstream-to", upstream), true)
     !ensureClean()
     !runGit(listOf("reset", "--hard", upstream, "--"), true)
     !handleSubmodules(true)
@@ -121,7 +121,7 @@ fun commitBranch(
 ): Result<Unit> = Result.of {
     !runGit(listOf("branch", "--track", branch), true)
     !ensureClean()
-    !runGit(listOf("reset", "hard", "HEAD~1"), true)
+    !runGit(listOf("reset", "--hard", "HEAD~1"), true)
     !runGit(listOf("checkout", branch), true)
     !handleSubmodules(true)
 }

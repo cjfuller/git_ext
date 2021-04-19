@@ -230,9 +230,14 @@ fn format_tree_rooted_at(
         .with_cell(prefix + &root.desc.name)
         .with_cell(root.desc.sha.clone())
         .with_cell(if root.desc.current {
-            root.desc.message.green()
+            root.desc
+                .message
+                .chars()
+                .take(40)
+                .collect::<String>()
+                .green()
         } else {
-            Colorize::clear(&*root.desc.message)
+            Colorize::clear(&*root.desc.message.chars().take(40).collect::<String>())
         })]);
     for down_name in &root.downstream {
         if let Some(down) = branches_by_name.get(down_name) {

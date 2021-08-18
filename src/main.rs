@@ -85,7 +85,7 @@ fn rec_fix_up(terminal: &str, verbose: bool, branch_cache: &mut Vec<String>) -> 
     let curr_branch = get_curr_branch(verbose)?;
     if curr_branch == terminal {
         for branch in branch_cache {
-            checkout(&branch, true)?;
+            checkout(branch, true)?;
             fix_upstream(&get_upstream(false)?, verbose)?;
         }
         return Ok(());
@@ -135,7 +135,7 @@ impl BranchT {
 fn branch_depth(branches_by_name: &HashMap<String, BranchT>, branch_name: &str) -> i32 {
     if let Some(br) = branches_by_name.get(branch_name) {
         if let Some(up) = &br.desc.upstream {
-            1 + branch_depth(branches_by_name, &up)
+            1 + branch_depth(branches_by_name, up)
         } else {
             0
         }
@@ -171,7 +171,7 @@ fn parse_branch_entry(branch_entry: &str) -> GEResult<BranchDescriptor> {
     let upstream = upstream_and_maybe_status
         .clone()
         .map(|v| String::from(v[0]));
-    let status = upstream_and_maybe_status.and_then(|v| v.get(1).clone().copied());
+    let status = upstream_and_maybe_status.and_then(|v| v.get(1).copied());
 
     let descriptor = BranchDescriptor {
         current: branch_entry.chars().next().unwrap_or(' ') == '*',
@@ -211,7 +211,7 @@ fn format_tree_rooted_at(
     let mut output_rows = if let Some(up) = &root.desc.upstream {
         if up.contains("origin") {
             vec![Row::new()
-                .with_cell((upstream_prefix + &up).blue())
+                .with_cell((upstream_prefix + up).blue())
                 .with_cell("")
                 .with_cell("")]
         } else if !branches_by_name.contains_key(up) {
@@ -241,7 +241,7 @@ fn format_tree_rooted_at(
         })]);
     for down_name in &root.downstream {
         if let Some(down) = branches_by_name.get(down_name) {
-            output_rows.append(&mut format_tree_rooted_at(branches_by_name, &down)?)
+            output_rows.append(&mut format_tree_rooted_at(branches_by_name, down)?)
         }
     }
     Ok(output_rows)
@@ -255,7 +255,7 @@ fn print_branch_tree() -> GEResult<()> {
     let mut branch_downstream_map: HashMap<String, Vec<String>> = HashMap::new();
     let mut branches: Vec<BranchT> = vec![];
     for branch in &branch_names {
-        let desc = parse_branch_entry(&branch)?;
+        let desc = parse_branch_entry(branch)?;
         branches.push(BranchT {
             desc,
             downstream: vec![],
@@ -337,7 +337,7 @@ fn purge(prefix: &str, no_confirm: bool, verbose: bool) -> GEResult<()> {
     }
     if no_confirm {
         for branch in &branches {
-            let result = delete_branch(&branch, true);
+            let result = delete_branch(branch, true);
             if let Err(e) = result {
                 println!("Warning: ignoring error deleting branch {}: {}", branch, e)
             }
@@ -356,6 +356,12 @@ fn purge(prefix: &str, no_confirm: bool, verbose: bool) -> GEResult<()> {
     }
 
     Ok(())
+}
+
+fn add_amend_push_origin(verbose: bool) -> GEResult<()> {
+    run_git(vec!["add", "."], true)?;
+    run_git(vec!["commit", "--amend", "--no-edit"], true)?;
+    push_origin(verbose)
 }
 
 #[derive(Debug, StructOpt)]
@@ -394,6 +400,9 @@ pub enum SubCommand {
         #[structopt(short = "y")]
         no_confirm: bool,
     },
+
+    #[structopt(alias = "aap")]
+    AddAmendPushOrigin {},
 }
 
 #[derive(Debug, StructOpt)]
@@ -422,6 +431,7 @@ fn main() {
         PushOrigin {} => push_origin(verbose),
         ShowTree {} => print_branch_tree(),
         Purge { prefix, no_confirm } => purge(&prefix, no_confirm, verbose),
+        AddAmendPushOrigin {} => add_amend_push_origin(verbose),
     };
     if result.is_err() {
         eprintln!("{}", result.unwrap_err());

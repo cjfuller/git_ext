@@ -5,8 +5,7 @@ dealing with stacked code reviews.
 
 `git_ext --help`
 
-#### Downloads
+#### Installation
 
-[osx](https://storage.googleapis.com/git-ext-dist/osx/git_ext)
+`cargo install --locked --git https://github.com/cjfuller/git_ext`
 
-[linux (64-bit)](https://storage.googleapis.com/git-ext-dist/linux-x86_64/git_ext)

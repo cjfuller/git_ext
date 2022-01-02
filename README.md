@@ -7,5 +7,5 @@ dealing with stacked code reviews.
 
 #### Installation
 
-`cargo install --locked --git https://github.com/cjfuller/git_ext`
+`kargo build && kargo assemble`
 

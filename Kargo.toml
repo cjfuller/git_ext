@@ -1,0 +1,9 @@
+[package]
+name = "git_ext"
+kotlin_version = "1.5.31"
+
+[dependencies]
+"com.github.ajalt.clikt:clikt" = "3.3.0"
+"com.github.ajalt.clikt:clikt-jvm" = "3.3.0"
+"com.github.ajalt.mordant:mordant" = "2.0.0-beta4"
+"com.github.ajalt.mordant:mordant-jvm" = "2.0.0-beta4"

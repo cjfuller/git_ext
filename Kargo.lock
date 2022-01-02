@@ -1,0 +1,12 @@
+com.github.ajalt.clikt:clikt:3.3.0:default
+com.github.ajalt.clikt:clikt-jvm:3.3.0:default
+com.github.ajalt.colormath:colormath:3.1.1:default
+com.github.ajalt.colormath:colormath-jvm:3.1.1:default
+com.github.ajalt.mordant:mordant:2.0.0-beta4:default
+com.github.ajalt.mordant:mordant-jvm:2.0.0-beta4:default
+org.jetbrains:annotations:13.0:default
+org.jetbrains:markdown-jvm:0.2.4:default
+org.jetbrains.kotlin:kotlin-stdlib:1.5.31:default
+org.jetbrains.kotlin:kotlin-stdlib-common:1.5.31:default
+org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.5.31:default
+org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.5.31:default

@@ -97,7 +97,7 @@ fun commitBranch(
 ): Result<Unit> = runCatching {
     !runGit(listOf("branch", "--track", branch), true)
     !ensureClean()
-    !runGit(listOf("reset", "hard", "HEAD~1"), true)
+    !runGit(listOf("reset", "--hard", "HEAD~1"), true)
     !runGit(listOf("checkout", branch), true)
     !handleSubmodules(true)
 }

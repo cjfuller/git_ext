@@ -83,7 +83,7 @@ fun getCurrBranch(@Suppress("UNUSED_PARAMETER") verbose: Boolean): Result<String
 
 fun fixUpstream(upstream: String, verbose: Boolean): Result<Unit> = runCatching {
     val commit = !lasthash(verbose)
-    !runGit(listOf("branch", "--set-usptream-to", upstream), true)
+    !runGit(listOf("branch", "--set-upstream-to", upstream), true)
     !ensureClean()
     !runGit(listOf("reset", "--hard", upstream, "--"), true)
     !handleSubmodules(true)
@@ -187,7 +187,7 @@ fun formatTreeRootedAt(
                 ""
             )
         )
-        root.desc.upstream != null && root.desc.upstream !in branchesByName -> listOf(
+        (root.desc.upstream?.isNotEmpty() ?: false) && root.desc.upstream !in branchesByName -> listOf(
             listOf(
                 red(upstreamPrefix + root.desc.upstream + " [missing]"),
                 "",

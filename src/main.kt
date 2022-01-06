@@ -4,6 +4,7 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.requireObject
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.mordant.widgets.Padding
@@ -299,6 +300,14 @@ fun addAmendPushOrigin(verbose: Boolean): Result<Unit> = runCatching {
     pushOrigin(verbose)
 }
 
+fun rebaseOntoLatest(branch: String, verbose: Boolean): Result<Unit> = runCatching {
+    val curr = !getCurrBranch(verbose = false)
+    !runGit(listOf("checkout", branch), true)
+    !runGit(listOf("pull", "--ff-only"), true)
+    !runGit(listOf("checkout", curr), true)
+    !fixUpstream(branch, verbose)
+}
+
 data class VerboseFlag(val value: Boolean = false)
 
 class Lasthash : CliktCommand() {
@@ -349,6 +358,12 @@ class AddAmendPushOrigin : CliktCommand() {
     override fun run() = !addAmendPushOrigin(verbose.value)
 }
 
+class RebaseOntoLatest : CliktCommand() {
+    val verbose by requireObject<VerboseFlag>()
+    val branch: String? by argument().optional()
+    override fun run() = !rebaseOntoLatest(branch ?: "master", verbose.value)
+}
+
 class GitExt : CliktCommand() {
     val verbose: Boolean by option().flag("verbose")
     override fun aliases() = mapOf(
@@ -358,7 +373,8 @@ class GitExt : CliktCommand() {
         "cbr" to listOf("commit-branch"),
         "tree" to listOf("show-tree"),
         "po" to listOf("push-origin"),
-        "aap" to listOf("add-amend-push-origin")
+        "aap" to listOf("add-amend-push-origin"),
+        "rl" to listOf("rebase-onto-latest"),
     )
 
     override fun run() {
@@ -376,4 +392,5 @@ fun main(args: Array<String>) = GitExt().subcommands(
     ShowTree(),
     Purge(),
     AddAmendPushOrigin(),
+    RebaseOntoLatest(),
 ).main(args)

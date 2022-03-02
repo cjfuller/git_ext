@@ -3,11 +3,11 @@ use std::iter::Iterator;
 use std::process::Command;
 
 use anyhow::Error;
+use clap::{Parser, Subcommand};
 use colored::*;
+use comfy_table::{presets, Cell, Table};
 use dialoguer::Confirm;
 use regex::Regex;
-use structopt::StructOpt;
-use tabular::{Row, Table};
 
 type GEResult<T> = Result<T, Error>;
 
@@ -170,7 +170,6 @@ fn parse_branch_entry(branch_entry: &str) -> GEResult<BranchDescriptor> {
     let upstream = upstream_and_maybe_status
         .clone()
         .map(|v| String::from(v[0]));
-    let status = upstream_and_maybe_status.and_then(|v| v.get(1).copied());
 
     let descriptor = BranchDescriptor {
         current: branch_entry.chars().next().unwrap_or(' ') == '*',
@@ -183,7 +182,6 @@ fn parse_branch_entry(branch_entry: &str) -> GEResult<BranchDescriptor> {
                 .as_str(),
         ),
         upstream,
-        status: String::from(status.unwrap_or("")),
     };
 
     Ok(descriptor)
@@ -202,22 +200,24 @@ fn prefix_for_depth(depth: i32) -> String {
 fn format_tree_rooted_at(
     branches_by_name: &HashMap<String, BranchT>,
     root: &BranchT,
-) -> GEResult<Vec<Row>> {
+) -> GEResult<Vec<Vec<Cell>>> {
     let depth = branch_depth(branches_by_name, &root.desc.name);
     let prefix = prefix_for_depth(depth) + if root.desc.current { "* " } else { "" };
     let upstream_prefix = prefix_for_depth(depth - 1);
 
     let mut output_rows = if let Some(up) = &root.desc.upstream {
         if up.contains("origin") {
-            vec![Row::new()
-                .with_cell((upstream_prefix + up).blue())
-                .with_cell("")
-                .with_cell("")]
+            vec![vec![
+                Cell::new(upstream_prefix + up).fg(comfy_table::Color::DarkBlue),
+                Cell::new(""),
+                Cell::new(""),
+            ]]
         } else if !branches_by_name.contains_key(up) {
-            vec![Row::new()
-                .with_cell((upstream_prefix + up + " [missing]").red())
-                .with_cell("")
-                .with_cell("")]
+            vec![vec![
+                Cell::new(upstream_prefix + up + " [missing]").fg(comfy_table::Color::DarkRed),
+                Cell::new(""),
+                Cell::new(""),
+            ]]
         } else {
             vec![]
         }
@@ -225,19 +225,15 @@ fn format_tree_rooted_at(
         vec![]
     };
 
-    output_rows.append(&mut vec![Row::new()
-        .with_cell(prefix + &root.desc.name)
-        .with_cell(root.desc.sha.clone())
-        .with_cell(if root.desc.current {
-            root.desc
-                .message
-                .chars()
-                .take(40)
-                .collect::<String>()
-                .green()
+    output_rows.push(vec![
+        Cell::new(prefix + &root.desc.name),
+        Cell::new(root.desc.sha.clone()),
+        if root.desc.current {
+            Cell::new(root.desc.message.clone()).fg(comfy_table::Color::DarkGreen)
         } else {
-            Colorize::clear(&*root.desc.message.chars().take(40).collect::<String>())
-        })]);
+            Cell::new(root.desc.message.clone())
+        },
+    ]);
     for down_name in &root.downstream {
         if let Some(down) = branches_by_name.get(down_name) {
             output_rows.append(&mut format_tree_rooted_at(branches_by_name, down)?)
@@ -294,17 +290,19 @@ fn print_branch_tree() -> GEResult<()> {
         .collect();
     root_branches.sort_by_key(|br| br.desc.name.clone());
 
-    let mut all_rows: Vec<Row> = vec![];
+    let mut all_rows: Vec<Vec<Cell>> = vec![];
 
     for br in root_branches {
         all_rows.append(&mut format_tree_rooted_at(&branches_by_name, &br)?)
     }
 
-    let mut table = Table::new("{:<}  {:<} {:<}");
+    let mut table = Table::new();
+    table.load_preset(presets::NOTHING);
     for row in all_rows {
         table.add_row(row);
     }
-    println!("{}", table);
+    table.set_content_arrangement(comfy_table::ContentArrangement::Dynamic);
+    println!("{table}");
 
     Ok(())
 }
@@ -371,62 +369,62 @@ fn rebase_onto_latest(branch: &str, verbose: bool) -> GEResult<()> {
     fix_upstream(branch, verbose)
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Subcommand)]
 pub enum SubCommand {
-    #[structopt(alias = "lh")]
+    #[clap(alias = "lh")]
     Lasthash {},
 
-    #[structopt(alias = "shup")]
+    #[clap(alias = "shup")]
     ShowUp {},
 
-    #[structopt(alias = "fu")]
+    #[clap(alias = "fu")]
     FixUp {},
 
     Up {
         branch: String,
     },
 
-    #[structopt(alias = "rup")]
+    #[clap(alias = "rup")]
     RecFixUp {
         terminal: String,
     },
 
-    #[structopt(alias = "cbr")]
+    #[clap(alias = "cbr")]
     CommitBr {
         name: String,
     },
 
-    #[structopt(alias = "tree")]
+    #[clap(alias = "tree")]
     ShowTree {},
 
-    #[structopt(alias = "po")]
+    #[clap(alias = "po")]
     PushOrigin {},
 
     Purge {
         prefix: String,
-        #[structopt(short = "y")]
+        #[clap(short = 'y')]
         no_confirm: bool,
     },
 
-    #[structopt(alias = "aap")]
+    #[clap(alias = "aap")]
     AddAmendPushOrigin {},
 
-    #[structopt(alias = "rl")]
+    #[clap(alias = "rl")]
     RebaseOntoLatest {
         branch: Option<String>,
     },
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct GitExt {
-    #[structopt(short, long)]
+    #[clap(short, long)]
     verbose: bool,
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     cmd: SubCommand,
 }
 
 fn main() {
-    let opt = GitExt::from_args();
+    let opt = GitExt::parse();
     use SubCommand::*;
     let verbose = opt.verbose;
     let result = match opt.cmd {

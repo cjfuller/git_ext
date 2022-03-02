@@ -116,7 +116,6 @@ struct BranchDescriptor {
     name: String,
     sha: String,
     upstream: Option<String>,
-    status: String,
     message: String,
 }
 
@@ -364,6 +363,14 @@ fn add_amend_push_origin(verbose: bool) -> GEResult<()> {
     push_origin(verbose)
 }
 
+fn rebase_onto_latest(branch: &str, verbose: bool) -> GEResult<()> {
+    let curr = get_curr_branch(false)?;
+    run_git(vec!["checkout", branch], true)?;
+    run_git(vec!["pull", "--ff-only"], true)?;
+    run_git(vec!["checkout", &curr], true)?;
+    fix_upstream(branch, verbose)
+}
+
 #[derive(Debug, StructOpt)]
 pub enum SubCommand {
     #[structopt(alias = "lh")]
@@ -403,6 +410,11 @@ pub enum SubCommand {
 
     #[structopt(alias = "aap")]
     AddAmendPushOrigin {},
+
+    #[structopt(alias = "rl")]
+    RebaseOntoLatest {
+        branch: Option<String>,
+    },
 }
 
 #[derive(Debug, StructOpt)]
@@ -432,6 +444,9 @@ fn main() {
         ShowTree {} => print_branch_tree(),
         Purge { prefix, no_confirm } => purge(&prefix, no_confirm, verbose),
         AddAmendPushOrigin {} => add_amend_push_origin(verbose),
+        RebaseOntoLatest { branch } => {
+            rebase_onto_latest(&branch.unwrap_or("master".to_string()), verbose)
+        }
     };
     if result.is_err() {
         eprintln!("{}", result.unwrap_err());

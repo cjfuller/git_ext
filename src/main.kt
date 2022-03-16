@@ -20,7 +20,7 @@ import com.github.ajalt.mordant.rendering.TextColors.green
 import com.github.ajalt.mordant.rendering.TextColors.red
 import com.github.ajalt.mordant.rendering.TextColors.white
 
-val t = Terminal()
+val t = Terminal().also { it.info.updateTerminalSize() }
 
 operator fun<T> Result<T>.not(): T = getOrThrow()
 
@@ -244,7 +244,7 @@ fun printBranchTree(): Result<Unit> = runCatching {
         borders = Borders.NONE
         column(0) {
             align = TextAlign.LEFT
-            width = ColumnWidth.Expand()
+            width = ColumnWidth.Auto
         }
         column(1) {
             align = TextAlign.RIGHT

@@ -145,7 +145,7 @@ fun parseBranchEntry(branchEntry: String): Result<BranchDescriptor> = runCatchin
     val restExpr = Regex("""(?:\[([^]]*)] )?(.*)""")
     val groups = restExpr.find(rest)?.groupValues
         ?: throw ParseError("Failed to parse $rest")
-    val upstreamAndMaybeStatus = groups.get(1).split(": ")
+    val upstreamAndMaybeStatus = groups[1].split(": ")
     val upstream = upstreamAndMaybeStatus[0]
     val status = upstreamAndMaybeStatus.getOrNull(1) ?: ""
     BranchDescriptor(
@@ -153,7 +153,7 @@ fun parseBranchEntry(branchEntry: String): Result<BranchDescriptor> = runCatchin
         name = name,
         sha = sha,
         message = groups.getOrElse(2) { "no message" },
-        upstream = upstream,
+        upstream = if (upstream == "") null else upstream,
         status = status
     )
 }
@@ -181,7 +181,7 @@ fun formatTreeRootedAt(
     val upstreamPrefix = prefixForDepth(depth - 1)
 
     when {
-        "origin" in root.desc.upstream ?: "" -> listOf(
+        "origin" in (root.desc.upstream ?: "") -> listOf(
             listOf(
                 blue(upstreamPrefix + root.desc.upstream),
                 "",

@@ -7,22 +7,22 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
-import com.github.ajalt.mordant.widgets.Padding
 import com.github.ajalt.mordant.rendering.OverflowWrap
 import com.github.ajalt.mordant.rendering.TextAlign
+import com.github.ajalt.mordant.rendering.TextColors.blue
+import com.github.ajalt.mordant.rendering.TextColors.brightRed
+import com.github.ajalt.mordant.rendering.TextColors.brightWhite
+import com.github.ajalt.mordant.rendering.TextColors.green
+import com.github.ajalt.mordant.rendering.TextColors.white
 import com.github.ajalt.mordant.table.Borders
 import com.github.ajalt.mordant.table.ColumnWidth
 import com.github.ajalt.mordant.table.table
 import com.github.ajalt.mordant.terminal.Terminal
-import com.github.ajalt.mordant.rendering.TextColors.blue
-import com.github.ajalt.mordant.rendering.TextColors.brightWhite
-import com.github.ajalt.mordant.rendering.TextColors.green
-import com.github.ajalt.mordant.rendering.TextColors.red
-import com.github.ajalt.mordant.rendering.TextColors.white
+import com.github.ajalt.mordant.widgets.Padding
 
 val t = Terminal().also { it.info.updateTerminalSize() }
 
-operator fun<T> Result<T>.not(): T = getOrThrow()
+operator fun <T> Result<T>.not(): T = getOrThrow()
 
 fun Any?.discard() = Unit
 
@@ -62,9 +62,9 @@ fun ensureClean(): Result<Unit> = runCatching {
     ) {
         throw Exception(
             "Aborting due to unclean repository:\n${
-                (white on red)(
-                    status
-                )
+            (white on brightRed)(
+                status
+            )
             }"
         )
     }
@@ -108,13 +108,31 @@ fun pushOrigin(verbose: Boolean): Result<Unit> = runCatching {
     !runGit(listOf("push", "-f", "origin", branch), true)
 }
 
+data class Status(
+    val ahead: Int,
+    val behind: Int,
+) {
+    companion object {
+        fun parse(str: String?): Status? {
+            if (str == null) return null
+            val parser = """ahead (\d+), behind (\d+)""".toRegex()
+            val match = parser.find(str)
+            return if (match != null) {
+                Status(ahead = match.groupValues[1].toInt(), behind = match.groupValues[2].toInt())
+            } else {
+                null
+            }
+        }
+    }
+}
+
 data class BranchDescriptor(
     val current: Boolean,
     val name: String,
     val sha: String,
     val upstream: String?,
-    val status: String,
     val message: String,
+    val status: Status?,
 )
 
 data class BranchT(
@@ -154,7 +172,7 @@ fun parseBranchEntry(branchEntry: String): Result<BranchDescriptor> = runCatchin
         sha = sha,
         message = groups.getOrElse(2) { "no message" },
         upstream = if (upstream == "") null else upstream,
-        status = status
+        status = Status.parse(status),
     )
 }
 
@@ -190,7 +208,7 @@ fun formatTreeRootedAt(
         )
         (root.desc.upstream?.isNotEmpty() ?: false) && root.desc.upstream !in branchesByName -> listOf(
             listOf(
-                red(upstreamPrefix + root.desc.upstream + " [missing]"),
+                brightRed(upstreamPrefix + root.desc.upstream + " [missing]"),
                 "",
                 ""
             )
@@ -200,6 +218,8 @@ fun formatTreeRootedAt(
         listOf(
             prefix + root.desc.name,
             root.desc.sha,
+            root.desc.status?.let { green("+${it.ahead}") } ?: "",
+            root.desc.status?.let { brightRed("-${it.behind}") } ?: "",
             if (root.desc.current) {
                 green(root.desc.message)
             } else {
@@ -240,27 +260,38 @@ fun printBranchTree(): Result<Unit> = runCatching {
         .filter { !it.hasUpstream() || it.desc.upstream !in branchesByName }
         .sortedBy { it.desc.name }
 
-    t.println(table {
-        borders = Borders.NONE
-        column(0) {
-            align = TextAlign.LEFT
-            width = ColumnWidth.Auto
+    t.println(
+        table {
+            borders = Borders.NONE
+            column(0) {
+                align = TextAlign.LEFT
+                width = ColumnWidth.Auto
+            }
+            column(1) {
+                align = TextAlign.RIGHT
+                width = ColumnWidth.Fixed(8)
+                overflowWrap = OverflowWrap.TRUNCATE
+                padding = Padding.none()
+            }
+            column(2) {
+                align = TextAlign.RIGHT
+                width = ColumnWidth.Auto
+            }
+            column(3) {
+                align = TextAlign.RIGHT
+                width = ColumnWidth.Auto
+                padding = Padding.none()
+            }
+            column(4) {
+                align = TextAlign.LEFT
+                width = ColumnWidth.Expand()
+            }
+            body {
+                roots.flatMap { !formatTreeRootedAt(branchesByName, it) }
+                    .map { r -> row(*r.toTypedArray()) }
+            }
         }
-        column(1) {
-            align = TextAlign.RIGHT
-            width = ColumnWidth.Fixed(8)
-            overflowWrap = OverflowWrap.TRUNCATE
-            padding = Padding.none()
-        }
-        column(2) {
-            align = TextAlign.LEFT
-            width = ColumnWidth.Expand()
-        }
-        body {
-            roots.flatMap { !formatTreeRootedAt(branchesByName, it) }
-                .map { r -> row(*r.toTypedArray()) }
-        }
-    })
+    )
 }
 
 fun deleteBranch(branch: String, verbose: Boolean): Result<Unit> =
@@ -288,7 +319,7 @@ fun purge(prefix: String, verbose: Boolean): Result<Unit> =
         if (allMessages.isNotEmpty()) {
             val errorMessage =
                 "Got the following errors deleting branches:\n${
-                    allMessages.joinToString("\n")
+                allMessages.joinToString("\n")
                 }"
             throw Exception(errorMessage)
         }

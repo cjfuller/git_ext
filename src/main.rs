@@ -442,49 +442,53 @@ fn reset_hard_origin(verbose: bool) -> GEResult<()> {
 
 #[derive(Debug, Subcommand)]
 pub enum SubCommand {
+    /// (alias: lh) print the most recent commit hash
     #[clap(alias = "lh")]
     Lasthash {},
 
+    /// (alias: shup) print the current branch's upstream
     #[clap(alias = "shup")]
     ShowUp {},
 
+    /// (alias: fu) rebase the latest commit onto the upstream
     #[clap(alias = "fu")]
     FixUp {},
 
-    Up {
-        branch: String,
-    },
+    /// rebase the latest commit onto the specified branch
+    Up { branch: String },
 
+    /// (alias: rup) recursively rebase the latest commit onto the upstream, to the provided terminal branch
     #[clap(alias = "rup")]
-    RecFixUp {
-        terminal: String,
-    },
+    RecFixUp { terminal: String },
 
+    /// (alias: cbr) reset to HEAD~1 and then create a new branch from the (formerly) current commit only
     #[clap(alias = "cbr")]
-    CommitBr {
-        name: String,
-    },
+    CommitBr { name: String },
 
+    /// (alias: tree) show the tree of all branches and their upstream relations
     #[clap(alias = "tree")]
     ShowTree {},
 
+    /// (alias: po) force push to the same-named branch on the origin
     #[clap(alias = "po")]
     PushOrigin {},
 
+    /// delete all branches with the given prefix that are no longer on the origin
     Purge {
         prefix: String,
         #[clap(short = 'y')]
         no_confirm: bool,
     },
 
+    /// (alias: aap) `git add .`; `git commit --amend`; `git_ext po`
     #[clap(alias = "aap")]
     AddAmendPushOrigin {},
 
+    /// (alias: rl) pull the latest master (or specified branch), then set the current branch to be the current commit rebased on that
     #[clap(alias = "rl")]
-    RebaseOntoLatest {
-        branch: Option<String>,
-    },
+    RebaseOntoLatest { branch: Option<String> },
 
+    /// (alias: rho) reset --hard to the same-named branch on the origin
     #[clap(alias = "rho")]
     ResetHardOrgin {},
 }

@@ -5,7 +5,7 @@ use std::process::Command;
 use anyhow::Error;
 use clap::{Parser, Subcommand};
 use colored::*;
-use comfy_table::{presets, Cell, Table};
+use comfy_table::{presets, Cell, CellAlignment, Table, Width};
 use dialoguer::Confirm;
 use regex::Regex;
 
@@ -43,7 +43,7 @@ fn ensure_clean() -> GEResult<()> {
     if !(status.contains("nothing to commit, working directory clean")
         || status.contains("nothing to commit, working tree clean"))
     {
-        return Err(Error::msg(status.white().on_red()));
+        return Err(Error::msg(status.white().on_bright_red()));
     }
     Ok(())
 }
@@ -110,6 +110,26 @@ fn push_origin(verbose: bool) -> GEResult<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy, Debug)]
+struct Status {
+    ahead: Option<i32>,
+    behind: Option<i32>,
+}
+
+impl Status {
+    fn parse(s: &str) -> Option<Status> {
+        let parser = Regex::new(r"(?:ahead (\d+))?(?:, )?(?:behind (\d+))?").unwrap();
+        if let Some(caps) = parser.captures(s) {
+            Some(Status {
+                ahead: caps.get(1).and_then(|it| it.as_str().parse().ok()),
+                behind: caps.get(2).and_then(|it| it.as_str().parse().ok()),
+            })
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct BranchDescriptor {
     current: bool,
@@ -117,6 +137,7 @@ struct BranchDescriptor {
     sha: String,
     upstream: Option<String>,
     message: String,
+    status: Option<Status>,
 }
 
 #[derive(Clone, Debug)]
@@ -171,6 +192,10 @@ fn parse_branch_entry(branch_entry: &str) -> GEResult<BranchDescriptor> {
         .clone()
         .map(|v| String::from(v[0]));
 
+    let status = upstream_and_maybe_status
+        .and_then(|v| v.get(1).cloned())
+        .and_then(|it| Status::parse(it));
+
     let descriptor = BranchDescriptor {
         current: branch_entry.chars().next().unwrap_or(' ') == '*',
         name: String::from(parts[0]),
@@ -182,6 +207,7 @@ fn parse_branch_entry(branch_entry: &str) -> GEResult<BranchDescriptor> {
                 .as_str(),
         ),
         upstream,
+        status,
     };
 
     Ok(descriptor)
@@ -211,10 +237,14 @@ fn format_tree_rooted_at(
                 Cell::new(upstream_prefix + up).fg(comfy_table::Color::DarkBlue),
                 Cell::new(""),
                 Cell::new(""),
+                Cell::new(""),
+                Cell::new(""),
             ]]
         } else if !branches_by_name.contains_key(up) {
             vec![vec![
-                Cell::new(upstream_prefix + up + " [missing]").fg(comfy_table::Color::DarkRed),
+                Cell::new(upstream_prefix + up + " [missing]").fg(comfy_table::Color::Red),
+                Cell::new(""),
+                Cell::new(""),
                 Cell::new(""),
                 Cell::new(""),
             ]]
@@ -224,10 +254,25 @@ fn format_tree_rooted_at(
     } else {
         vec![]
     };
-
     output_rows.push(vec![
         Cell::new(prefix + &root.desc.name),
         Cell::new(root.desc.sha.clone()),
+        Cell::new(
+            root.desc
+                .status
+                .and_then(|it| it.ahead)
+                .map(|it| format!("+{it}"))
+                .unwrap_or("".to_string()),
+        )
+        .fg(comfy_table::Color::DarkGreen),
+        Cell::new(
+            root.desc
+                .status
+                .and_then(|it| it.behind)
+                .map(|it| format!("-{it}"))
+                .unwrap_or("".to_string()),
+        )
+        .fg(comfy_table::Color::Red),
         if root.desc.current {
             Cell::new(root.desc.message.clone()).fg(comfy_table::Color::DarkGreen)
         } else {
@@ -302,6 +347,24 @@ fn print_branch_tree() -> GEResult<()> {
         table.add_row(row);
     }
     table.set_content_arrangement(comfy_table::ContentArrangement::Dynamic);
+    table
+        .get_column_mut(0)
+        .unwrap()
+        .set_cell_alignment(CellAlignment::Left);
+    let col1 = table.get_column_mut(1).unwrap();
+    col1.set_cell_alignment(CellAlignment::Right);
+    col1.set_padding((0, 0));
+    table
+        .get_column_mut(2)
+        .unwrap()
+        .set_cell_alignment(CellAlignment::Right);
+    let col3 = table.get_column_mut(3).unwrap();
+    col3.set_cell_alignment(CellAlignment::Right);
+    col3.set_padding((0, 0));
+    table
+        .get_column_mut(4)
+        .unwrap()
+        .set_cell_alignment(CellAlignment::Left);
     println!("{table}");
 
     Ok(())

@@ -5,7 +5,7 @@ use std::process::Command;
 use anyhow::Error;
 use clap::{Parser, Subcommand};
 use colored::*;
-use comfy_table::{presets, Cell, CellAlignment, Table, Width};
+use comfy_table::{presets, Cell, CellAlignment, Table};
 use dialoguer::Confirm;
 use regex::Regex;
 
@@ -432,6 +432,14 @@ fn rebase_onto_latest(branch: &str, verbose: bool) -> GEResult<()> {
     fix_upstream(branch, verbose)
 }
 
+fn reset_hard_origin(verbose: bool) -> GEResult<()> {
+    let curr = get_curr_branch(verbose)?;
+    ensure_clean()?;
+    run_git(vec!["fetch", "origin"], true)?;
+    run_git(vec!["reset", "--hard", &format!("origin/{curr}")], true)?;
+    Ok(())
+}
+
 #[derive(Debug, Subcommand)]
 pub enum SubCommand {
     #[clap(alias = "lh")]
@@ -476,6 +484,9 @@ pub enum SubCommand {
     RebaseOntoLatest {
         branch: Option<String>,
     },
+
+    #[clap(alias = "rho")]
+    ResetHardOrgin {},
 }
 
 #[derive(Debug, Parser)]
@@ -508,6 +519,7 @@ fn main() {
         RebaseOntoLatest { branch } => {
             rebase_onto_latest(&branch.unwrap_or("master".to_string()), verbose)
         }
+        ResetHardOrgin {} => reset_hard_origin(verbose),
     };
     if result.is_err() {
         eprintln!("{}", result.unwrap_err());

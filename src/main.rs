@@ -96,11 +96,13 @@ fn rec_fix_up(terminal: &str, verbose: bool, branch_cache: &mut Vec<String>) -> 
     rec_fix_up(terminal, verbose, branch_cache)
 }
 
-fn commit_branch(branch_name: &str, _verbose: bool) -> GEResult<()> {
+fn commit_branch(branch_name: &str, verbose: bool) -> GEResult<()> {
     run_git(vec!["branch", branch_name], true)?;
     ensure_clean()?;
     run_git(vec!["reset", "--hard", "HEAD~1"], true)?;
+    let parent_branch = get_curr_branch(verbose)?;
     run_git(vec!["checkout", branch_name], true)?;
+    run_git(vec!["branch", "--set-upstream-to", &parent_branch], true)?;
     handle_submodules(true)
 }
 

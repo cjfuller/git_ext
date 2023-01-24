@@ -81,19 +81,27 @@ fn checkout(branch: &str, verbose: bool) -> GEResult<()> {
     handle_submodules(verbose)
 }
 
-fn rec_fix_up(terminal: &str, verbose: bool, branch_cache: &mut Vec<String>) -> GEResult<()> {
+fn rec_fix_up(
+    terminal: &str,
+    push: bool,
+    verbose: bool,
+    branch_cache: &mut Vec<String>,
+) -> GEResult<()> {
     let curr_branch = get_curr_branch(verbose)?;
     if curr_branch == terminal {
         for branch in branch_cache {
             checkout(branch, true)?;
             fix_upstream(&get_upstream(false)?, verbose)?;
+            if push {
+                push_origin(false)?;
+            }
         }
         return Ok(());
     }
     let curr_upstream = get_upstream(verbose)?;
     checkout(&curr_upstream, false)?;
     branch_cache.insert(0, curr_branch);
-    rec_fix_up(terminal, verbose, branch_cache)
+    rec_fix_up(terminal, push, verbose, branch_cache)
 }
 
 fn commit_branch(branch_name: &str, verbose: bool) -> GEResult<()> {
@@ -461,7 +469,11 @@ pub enum SubCommand {
 
     /// (alias: rup) recursively rebase the latest commit onto the upstream, to the provided terminal branch
     #[clap(alias = "rup")]
-    RecFixUp { terminal: String },
+    RecFixUp {
+        terminal: String,
+        #[clap(long)]
+        push: bool,
+    },
 
     /// (alias: cbr) reset to HEAD~1 and then create a new branch from the (formerly) current commit only
     #[clap(alias = "cbr")]
@@ -516,7 +528,7 @@ fn main() {
         }),
         FixUp {} => fix_upstream(&get_upstream(verbose).unwrap(), verbose),
         Up { branch } => fix_upstream(&branch, verbose),
-        RecFixUp { terminal } => rec_fix_up(&terminal, verbose, &mut vec![]),
+        RecFixUp { terminal, push } => rec_fix_up(&terminal, push, verbose, &mut vec![]),
         CommitBr { name } => commit_branch(&name, verbose),
         PushOrigin {} => push_origin(verbose),
         ShowTree {} => print_branch_tree(),

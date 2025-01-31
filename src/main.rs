@@ -498,7 +498,7 @@ pub enum SubCommand {
     #[clap(alias = "aap")]
     AddAmendPushOrigin {},
 
-    /// (alias: rl) pull the latest master (or specified branch), then set the current branch to be the current commit rebased on that
+    /// (alias: rl) pull the latest main (or specified branch), then set the current branch to be the current commit rebased on that
     #[clap(alias = "rl")]
     RebaseOntoLatest { branch: Option<String> },
 
@@ -535,7 +535,7 @@ fn main() {
         Purge { prefix, no_confirm } => purge(&prefix, no_confirm, verbose),
         AddAmendPushOrigin {} => add_amend_push_origin(verbose),
         RebaseOntoLatest { branch } => {
-            rebase_onto_latest(&branch.unwrap_or("master".to_string()), verbose)
+            rebase_onto_latest(&branch.unwrap_or("main".to_string()), verbose)
         }
         ResetHardOrgin {} => reset_hard_origin(verbose),
     };

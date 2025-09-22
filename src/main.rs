@@ -12,7 +12,7 @@ use regex::Regex;
 type GEResult<T> = Result<T, Error>;
 
 fn run_git(cmdargs: Vec<&str>, verbose: bool) -> GEResult<String> {
-    let cmd_string = format!("{} {}", "git".bright_white().on_green(), cmdargs.join(" "));
+    let cmd_string = format!("{} {}", "git".bright_black().on_green(), cmdargs.join(" "));
 
     if verbose {
         println!("{}", cmd_string);

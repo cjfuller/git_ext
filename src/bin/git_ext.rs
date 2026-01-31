@@ -1,12 +1,17 @@
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::fmt::Display;
 use std::iter::Iterator;
 use std::process::Command;
+use std::rc::Rc;
 
 use anyhow::Error;
 use clap::{Parser, Subcommand};
 use colored::*;
-use comfy_table::{presets, Cell, CellAlignment, Table};
+use comfy_table::{Cell, CellAlignment, Table, presets};
 use dialoguer::Confirm;
+use git_ext::tree::{Tree, draw_from};
+use indexmap::IndexMap;
 use regex::Regex;
 
 type GEResult<T> = Result<T, Error>;
@@ -137,36 +142,43 @@ impl Status {
 }
 
 #[derive(Clone, Debug)]
-struct BranchDescriptor {
-    current: bool,
-    name: String,
-    sha: String,
-    upstream: Option<String>,
-    message: String,
-    status: Option<Status>,
+enum Branch {
+    Branch {
+        current: bool,
+        name: String,
+        sha: String,
+        upstream: Option<String>,
+        message: String,
+        status: Option<Status>,
+    },
+    Missing(String),
 }
 
-#[derive(Clone, Debug)]
-struct BranchT {
-    desc: BranchDescriptor,
-    downstream: Vec<String>,
-}
-
-impl BranchT {
+impl Branch {
+    fn name(&self) -> &str {
+        match self {
+            Branch::Branch { name, .. } => name,
+            Branch::Missing(name) => name,
+        }
+    }
+    fn upstream(&self) -> Option<&str> {
+        match self {
+            Branch::Branch { upstream, .. } => upstream.as_deref(),
+            Branch::Missing(_) => None,
+        }
+    }
     fn has_upstream(&self) -> bool {
-        self.desc.upstream.is_some()
+        self.upstream().is_some()
     }
 }
 
-fn branch_depth(branches_by_name: &HashMap<String, BranchT>, branch_name: &str) -> i32 {
-    if let Some(br) = branches_by_name.get(branch_name) {
-        if let Some(up) = &br.desc.upstream {
-            1 + branch_depth(branches_by_name, up)
-        } else {
-            0
+impl Display for Branch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Branch::Branch { current, name, .. } if *current => write!(f, "* {name}"),
+            Branch::Missing(name) if !name.contains("origin") => write!(f, "{name} [missing]"),
+            _ => write!(f, "{}", self.name()),
         }
-    } else {
-        0
     }
 }
 
@@ -177,7 +189,7 @@ fn parse_error(branch_entry: &str, reason: &str) -> Error {
     ))
 }
 
-fn parse_branch_entry(branch_entry: &str) -> GEResult<BranchDescriptor> {
+fn parse_branch_entry(branch_entry: &str) -> GEResult<Branch> {
     let whitespace = Regex::new(r"\s+")?;
     let parts: Vec<&str> = whitespace
         .splitn(branch_entry.trim().trim_start_matches('*').trim(), 3)
@@ -202,7 +214,7 @@ fn parse_branch_entry(branch_entry: &str) -> GEResult<BranchDescriptor> {
         .and_then(|v| v.get(1).cloned())
         .and_then(Status::parse);
 
-    let descriptor = BranchDescriptor {
+    let descriptor = Branch::Branch {
         current: branch_entry.chars().next().unwrap_or(' ') == '*',
         name: String::from(parts[0]),
         sha: String::from(parts[1]),
@@ -219,132 +231,140 @@ fn parse_branch_entry(branch_entry: &str) -> GEResult<BranchDescriptor> {
     Ok(descriptor)
 }
 
-const INDENT_AMOUNT: i32 = 2;
-
-fn prefix_for_depth(depth: i32) -> String {
-    if depth <= 0 {
-        String::from("")
-    } else {
-        " ".repeat((INDENT_AMOUNT * depth) as usize) + "+-- "
-    }
-}
-
-fn format_tree_rooted_at(
-    branches_by_name: &HashMap<String, BranchT>,
-    root: &BranchT,
-) -> GEResult<Vec<Vec<Cell>>> {
-    let depth = branch_depth(branches_by_name, &root.desc.name);
-    let prefix = prefix_for_depth(depth) + if root.desc.current { "* " } else { "" };
-    let upstream_prefix = prefix_for_depth(depth - 1);
-
-    let mut output_rows = if let Some(up) = &root.desc.upstream {
-        if up.contains("origin") {
-            vec![vec![
-                Cell::new(upstream_prefix + up).fg(comfy_table::Color::DarkBlue),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]]
-        } else if !branches_by_name.contains_key(up) {
-            vec![vec![
-                Cell::new(upstream_prefix + up + " [missing]").fg(comfy_table::Color::Red),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-                Cell::new(""),
-            ]]
-        } else {
-            vec![]
-        }
-    } else {
-        vec![]
-    };
-    output_rows.push(vec![
-        Cell::new(prefix + &root.desc.name),
-        Cell::new(root.desc.sha.clone()),
-        Cell::new(
-            root.desc
-                .status
-                .and_then(|it| it.ahead)
-                .map(|it| format!("+{it}"))
-                .unwrap_or("".to_string()),
-        )
-        .fg(comfy_table::Color::DarkGreen),
-        Cell::new(
-            root.desc
-                .status
-                .and_then(|it| it.behind)
-                .map(|it| format!("-{it}"))
-                .unwrap_or("".to_string()),
-        )
-        .fg(comfy_table::Color::Red),
-        if root.desc.current {
-            Cell::new(root.desc.message.clone()).fg(comfy_table::Color::DarkGreen)
-        } else {
-            Cell::new(root.desc.message.clone())
-        },
-    ]);
-    for down_name in &root.downstream {
-        if let Some(down) = branches_by_name.get(down_name) {
-            output_rows.append(&mut format_tree_rooted_at(branches_by_name, down)?)
-        }
-    }
-    Ok(output_rows)
-}
-
-fn print_branch_tree() -> GEResult<()> {
+fn build_branch_trees() -> GEResult<Vec<Rc<RefCell<Tree<Branch>>>>> {
     let branch_names: Vec<String> = run_git(&["branch", "-vv"], false)?
         .lines()
         .map(String::from)
         .collect();
-    let mut branch_downstream_map: HashMap<String, Vec<String>> = HashMap::new();
-    let mut branches: Vec<BranchT> = vec![];
+    let mut branches: IndexMap<String, Branch> = Default::default();
+    let mut downstream_lookup: IndexMap<String, Vec<String>> = Default::default();
     for branch in &branch_names {
         let desc = parse_branch_entry(branch)?;
-        branches.push(BranchT {
-            desc,
-            downstream: vec![],
-        });
+        branches.insert(desc.name().to_string(), desc.clone());
     }
 
-    for branch in &branches {
-        if let Some(upstream) = &branch.desc.upstream {
-            if !branch_downstream_map.contains_key(upstream) {
-                branch_downstream_map.insert(upstream.clone(), vec![]);
+    for branch in branches.values().cloned().collect::<Vec<_>>() {
+        if let Some(up_name) = branch.upstream() {
+            branches
+                .entry(up_name.to_string())
+                .or_insert(Branch::Missing(up_name.to_string()));
+
+            downstream_lookup
+                .entry(up_name.to_string())
+                .or_default()
+                .push(branch.name().to_string())
+        }
+    }
+
+    let mut nodes_by_name: IndexMap<String, Rc<RefCell<Tree<Branch>>>> = Default::default();
+
+    for branch in branches.values() {
+        if !downstream_lookup.contains_key(&branch.name().to_string()) {
+            nodes_by_name.insert(
+                branch.name().to_string(),
+                Rc::new(RefCell::new(Tree::Leaf(branch.clone()))),
+            );
+        }
+    }
+
+    let mut to_process: VecDeque<String> = branches.keys().cloned().collect();
+
+    while let Some(next_branch) = to_process.pop_front() {
+        if nodes_by_name.contains_key(&next_branch) {
+            continue;
+        }
+
+        let downstreams = downstream_lookup.get(&next_branch).unwrap();
+        if downstreams.iter().all(|it| nodes_by_name.contains_key(it)) {
+            let mut children: Vec<Rc<RefCell<Tree<Branch>>>> = vec![];
+            for dwn in downstreams {
+                children.push(nodes_by_name.get(dwn).unwrap().clone())
             }
-            branch_downstream_map
-                .get_mut(upstream)
-                .ok_or_else(|| Error::msg("Upstream branch missing!"))?
-                .push(branch.desc.name.clone());
+            let node = Tree::Node {
+                value: branches.get(&next_branch).cloned().unwrap(),
+                children,
+            };
+            nodes_by_name.insert(next_branch, Rc::new(RefCell::new(node)));
+        } else {
+            to_process.push_back(next_branch);
         }
     }
 
-    for branch in branches.iter_mut() {
-        if let Some(downstream) = branch_downstream_map.get(&branch.desc.name) {
-            branch.downstream = downstream.to_vec();
-        }
-    }
-
-    let mut branches_by_name: HashMap<String, BranchT> = HashMap::new();
-    for branch in &branches {
-        branches_by_name.insert(branch.desc.name.clone(), branch.clone());
-    }
-
-    let mut root_branches: Vec<BranchT> = branches
-        .into_iter()
-        .filter(|b| {
-            !b.has_upstream()
-                || !branches_by_name
-                    .contains_key(b.desc.upstream.as_ref().unwrap_or(&String::from("")))
-        })
+    let roots = branches
+        .values()
+        .filter(|it| !it.has_upstream())
+        .map(|it| nodes_by_name.get(it.name()).unwrap().clone())
         .collect();
-    root_branches.sort_by_key(|br| br.desc.name.clone());
+    Ok(roots)
+}
 
-    let mut all_rows: Vec<Vec<Cell>> = vec![];
+const ORIGIN_COLOR: comfy_table::Color = comfy_table::Color::DarkBlue;
 
-    for br in root_branches {
-        all_rows.append(&mut format_tree_rooted_at(&branches_by_name, &br)?)
+fn print_branch_tree() -> GEResult<()> {
+    let roots = build_branch_trees()?;
+
+    let mut all_rows = vec![];
+
+    for root in roots {
+        let formatted = draw_from(&*root.borrow(), 2, String::default(), String::default());
+        for (branch, entry) in formatted {
+            let curr = match branch {
+                Branch::Branch { name, .. } if name.contains("origin") => {
+                    vec![
+                        Cell::new(entry).fg(ORIGIN_COLOR),
+                        Cell::new(""),
+                        Cell::new(""),
+                        Cell::new(""),
+                        Cell::new(""),
+                    ]
+                }
+                Branch::Branch {
+                    sha,
+                    status,
+                    message,
+                    current,
+                    ..
+                } => {
+                    vec![
+                        Cell::new(entry),
+                        Cell::new(sha),
+                        Cell::new(
+                            status
+                                .and_then(|it| it.ahead)
+                                .map(|it| format!("+{it}"))
+                                .unwrap_or("".to_string()),
+                        )
+                        .fg(comfy_table::Color::DarkGreen),
+                        Cell::new(
+                            status
+                                .and_then(|it| it.behind)
+                                .map(|it| format!("-{it}"))
+                                .unwrap_or("".to_string()),
+                        )
+                        .fg(comfy_table::Color::Red),
+                        if current {
+                            Cell::new(message).fg(comfy_table::Color::DarkGreen)
+                        } else {
+                            Cell::new(message)
+                        },
+                    ]
+                }
+                Branch::Missing(name) => {
+                    vec![
+                        Cell::new(entry).fg(if name.contains("origin") {
+                            ORIGIN_COLOR
+                        } else {
+                            comfy_table::Color::Red
+                        }),
+                        Cell::new(""),
+                        Cell::new(""),
+                        Cell::new(""),
+                        Cell::new(""),
+                    ]
+                }
+            };
+            all_rows.push(curr);
+        }
     }
 
     let mut table = Table::new();
@@ -372,7 +392,6 @@ fn print_branch_tree() -> GEResult<()> {
         .unwrap()
         .set_cell_alignment(CellAlignment::Left);
     println!("{table}");
-
     Ok(())
 }
 

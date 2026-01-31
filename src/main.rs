@@ -11,7 +11,7 @@ use regex::Regex;
 
 type GEResult<T> = Result<T, Error>;
 
-fn run_git(cmdargs: Vec<&str>, verbose: bool) -> GEResult<String> {
+fn run_git(cmdargs: &[&str], verbose: bool) -> GEResult<String> {
     let cmd_string = format!("{} {}", "git".bright_black().on_green(), cmdargs.join(" "));
 
     if verbose {
@@ -35,11 +35,11 @@ fn run_git(cmdargs: Vec<&str>, verbose: bool) -> GEResult<String> {
 }
 
 fn lasthash(verbose: bool) -> GEResult<String> {
-    run_git(vec!["log", "-n", "1", "--pretty=format:%H"], verbose)
+    run_git(&["log", "-n", "1", "--pretty=format:%H"], verbose)
 }
 
 fn ensure_clean() -> GEResult<()> {
-    let status = run_git(vec!["status"], false)?;
+    let status = run_git(&["status"], false)?;
     if !(status.contains("nothing to commit, working directory clean")
         || status.contains("nothing to commit, working tree clean"))
     {
@@ -49,35 +49,35 @@ fn ensure_clean() -> GEResult<()> {
 }
 
 fn handle_submodules(verbose: bool) -> GEResult<()> {
-    run_git(vec!["submodule", "init"], verbose)?;
-    run_git(vec!["submodule", "update", "--recursive"], verbose)?;
+    run_git(&["submodule", "init"], verbose)?;
+    run_git(&["submodule", "update", "--recursive"], verbose)?;
     Ok(())
 }
 
 fn get_upstream(verbose: bool) -> GEResult<String> {
     run_git(
-        vec!["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
         verbose,
     )
 }
 
 fn get_curr_branch(verbose: bool) -> GEResult<String> {
-    run_git(vec!["rev-parse", "--abbrev-ref", "HEAD"], verbose)
+    run_git(&["rev-parse", "--abbrev-ref", "HEAD"], verbose)
 }
 
 fn fix_upstream(upstream: &str, verbose: bool) -> GEResult<()> {
     let commit = lasthash(verbose)?;
-    run_git(vec!["branch", "--set-upstream-to", upstream], true)?;
+    run_git(&["branch", "--set-upstream-to", upstream], true)?;
     ensure_clean()?;
-    run_git(vec!["reset", "--hard", upstream, "--"], true)?;
+    run_git(&["reset", "--hard", upstream, "--"], true)?;
     handle_submodules(true)?;
-    run_git(vec!["cherry-pick", commit.as_str()], true)?;
+    run_git(&["cherry-pick", commit.as_str()], true)?;
     handle_submodules(true)?;
     Ok(())
 }
 
 fn checkout(branch: &str, verbose: bool) -> GEResult<()> {
-    run_git(vec!["checkout", branch], verbose)?;
+    run_git(&["checkout", branch], verbose)?;
     handle_submodules(verbose)
 }
 
@@ -105,18 +105,18 @@ fn rec_fix_up(
 }
 
 fn commit_branch(branch_name: &str, verbose: bool) -> GEResult<()> {
-    run_git(vec!["branch", branch_name], true)?;
+    run_git(&["branch", branch_name], true)?;
     ensure_clean()?;
-    run_git(vec!["reset", "--hard", "HEAD~1"], true)?;
+    run_git(&["reset", "--hard", "HEAD~1"], true)?;
     let parent_branch = get_curr_branch(verbose)?;
-    run_git(vec!["checkout", branch_name], true)?;
-    run_git(vec!["branch", "--set-upstream-to", &parent_branch], true)?;
+    run_git(&["checkout", branch_name], true)?;
+    run_git(&["branch", "--set-upstream-to", &parent_branch], true)?;
     handle_submodules(true)
 }
 
 fn push_origin(verbose: bool) -> GEResult<()> {
     let branch = get_curr_branch(verbose)?;
-    run_git(vec!["push", "-f", "origin", &branch], true)?;
+    run_git(&["push", "-f", "origin", &branch], true)?;
     Ok(())
 }
 
@@ -129,14 +129,10 @@ struct Status {
 impl Status {
     fn parse(s: &str) -> Option<Status> {
         let parser = Regex::new(r"(?:ahead (\d+))?(?:, )?(?:behind (\d+))?").unwrap();
-        if let Some(caps) = parser.captures(s) {
-            Some(Status {
-                ahead: caps.get(1).and_then(|it| it.as_str().parse().ok()),
-                behind: caps.get(2).and_then(|it| it.as_str().parse().ok()),
-            })
-        } else {
-            None
-        }
+        parser.captures(s).map(|caps| Status {
+            ahead: caps.get(1).and_then(|it| it.as_str().parse().ok()),
+            behind: caps.get(2).and_then(|it| it.as_str().parse().ok()),
+        })
     }
 }
 
@@ -204,7 +200,7 @@ fn parse_branch_entry(branch_entry: &str) -> GEResult<BranchDescriptor> {
 
     let status = upstream_and_maybe_status
         .and_then(|v| v.get(1).cloned())
-        .and_then(|it| Status::parse(it));
+        .and_then(Status::parse);
 
     let descriptor = BranchDescriptor {
         current: branch_entry.chars().next().unwrap_or(' ') == '*',
@@ -298,7 +294,7 @@ fn format_tree_rooted_at(
 }
 
 fn print_branch_tree() -> GEResult<()> {
-    let branch_names: Vec<String> = run_git(vec!["branch", "-vv"], false)?
+    let branch_names: Vec<String> = run_git(&["branch", "-vv"], false)?
         .lines()
         .map(String::from)
         .collect();
@@ -381,22 +377,19 @@ fn print_branch_tree() -> GEResult<()> {
 }
 
 fn delete_branch(branch: &str, verbose: bool) -> GEResult<()> {
-    run_git(vec!["branch", "-D", branch], verbose)?;
+    run_git(&["branch", "-D", branch], verbose)?;
     Ok(())
 }
 
 fn purge(prefix: &str, no_confirm: bool, verbose: bool) -> GEResult<()> {
     let re = Regex::new(&format!(r"origin/{}/([\w-]+)", prefix))?;
-    let branches: std::vec::Vec<String> =
-        run_git(vec!["remote", "prune", "origin", "-n"], verbose)?
-            .lines()
-            .map(|s| s.trim())
-            .map(|s| re.captures(s))
-            .flatten()
-            .map(|cap| cap.get(1))
-            .flatten()
-            .map(|m| format!("{}/{}", prefix, m.as_str()))
-            .collect();
+    let branches: std::vec::Vec<String> = run_git(&["remote", "prune", "origin", "-n"], verbose)?
+        .lines()
+        .map(|s| s.trim())
+        .filter_map(|s| re.captures(s))
+        .filter_map(|cap| cap.get(1))
+        .map(|m| format!("{}/{}", prefix, m.as_str()))
+        .collect();
     if branches.is_empty() {
         println!("No branches to purge.");
         return Ok(());
@@ -412,7 +405,7 @@ fn purge(prefix: &str, no_confirm: bool, verbose: bool) -> GEResult<()> {
                 println!("Warning: ignoring error deleting branch {}: {}", branch, e)
             }
         }
-        run_git(vec!["remote", "prune", "origin"], verbose)?;
+        run_git(&["remote", "prune", "origin"], verbose)?;
     } else if Confirm::new().with_prompt("Ok?").interact()? {
         for branch in branches {
             let result = delete_branch(&branch, true);
@@ -420,7 +413,7 @@ fn purge(prefix: &str, no_confirm: bool, verbose: bool) -> GEResult<()> {
                 println!("Warning: ignoring error deleting branch {}: {}", branch, e)
             }
         }
-        run_git(vec!["remote", "prune", "origin"], verbose)?;
+        run_git(&["remote", "prune", "origin"], verbose)?;
     } else {
         println!("Cancelling.")
     }
@@ -429,24 +422,24 @@ fn purge(prefix: &str, no_confirm: bool, verbose: bool) -> GEResult<()> {
 }
 
 fn add_amend_push_origin(verbose: bool) -> GEResult<()> {
-    run_git(vec!["add", "."], true)?;
-    run_git(vec!["commit", "--amend", "--no-edit"], true)?;
+    run_git(&["add", "."], true)?;
+    run_git(&["commit", "--amend", "--no-edit"], true)?;
     push_origin(verbose)
 }
 
 fn rebase_onto_latest(branch: &str, verbose: bool) -> GEResult<()> {
     let curr = get_curr_branch(false)?;
-    run_git(vec!["checkout", branch], true)?;
-    run_git(vec!["pull", "--ff-only"], true)?;
-    run_git(vec!["checkout", &curr], true)?;
+    run_git(&["checkout", branch], true)?;
+    run_git(&["pull", "--ff-only"], true)?;
+    run_git(&["checkout", &curr], true)?;
     fix_upstream(branch, verbose)
 }
 
 fn reset_hard_origin(verbose: bool) -> GEResult<()> {
     let curr = get_curr_branch(verbose)?;
     ensure_clean()?;
-    run_git(vec!["fetch", "origin"], true)?;
-    run_git(vec!["reset", "--hard", &format!("origin/{curr}")], true)?;
+    run_git(&["fetch", "origin"], true)?;
+    run_git(&["reset", "--hard", &format!("origin/{curr}")], true)?;
     Ok(())
 }
 
